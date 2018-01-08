@@ -9,9 +9,9 @@ import (
 	"os"
 )
 
-func ingestOneOff(accessLog Log) error {
-	file, err := os.Open(accessLog.path)
-	defer file.Close()
+func ingestOneOff(l Log) error {
+	logFile, err := os.Open(l.path)
+	defer logFile.Close()
 
 	if err != nil {
 		log.Fatal(err)
@@ -19,7 +19,7 @@ func ingestOneOff(accessLog Log) error {
 	}
 
 	// Get the number of lines
-	noLines, err := getNumberLines(file)
+	noLines, err := getNumberLines(logFile)
 
 	if err != nil {
 		log.Fatal(err)
@@ -27,12 +27,12 @@ func ingestOneOff(accessLog Log) error {
 	}
 
 	// Read the file line by line
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(logFile)
 	scanner.Split(bufio.ScanLines)
 
 	for scanner.Scan() {
 		logLine := scanner.Text()
-		lineUUID, err := writeLine(accessLog, logLine)
+		lineUUID, err := writeLine(l, logLine)
 
 		// Update progress interface
 	}
@@ -40,7 +40,7 @@ func ingestOneOff(accessLog Log) error {
 	return nil
 }
 
-func getNumberLines(file *File) (lines int, err error) {
+func getNumberLines(file *os.File) (lines int, err error) {
 	buf := make([]byte, 1024)
 	lines = 0
 	for {
