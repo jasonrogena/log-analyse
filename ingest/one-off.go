@@ -19,7 +19,7 @@ func ingestOneOff(l Log) error {
 	}
 
 	// Get the number of lines
-	noLines, err := getNumberLines(logFile)
+	_, _ = getNumberLines(logFile)
 
 	if err != nil {
 		log.Fatal(err)
@@ -32,7 +32,7 @@ func ingestOneOff(l Log) error {
 
 	for scanner.Scan() {
 		logLine := scanner.Text()
-		lineUUID, err := writeLine(l, logLine)
+		_, _ = writeLine(l, logLine)
 
 		// Update progress interface
 	}
