@@ -4,9 +4,12 @@ package ingest
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"os"
+
+	"github.com/satyrius/gonx"
 )
 
 func ingestOneOff(l Log) error {
@@ -19,7 +22,8 @@ func ingestOneOff(l Log) error {
 	}
 
 	// Get the number of lines
-	_, _ = getNumberLines(logFile)
+	noLines, _ := getNumberLines(logFile)
+	fmt.Printf("Number of lines %d\n", noLines)
 
 	if err != nil {
 		log.Fatal(err)
@@ -27,14 +31,20 @@ func ingestOneOff(l Log) error {
 	}
 
 	// Read the file line by line
+	logFile.Seek(0, 0)
+	lineNo := 0
 	scanner := bufio.NewScanner(logFile)
 	scanner.Split(bufio.ScanLines)
-
+	nginxParser := gonx.NewParser(l.format)
 	for scanner.Scan() {
+		fmt.Println("*********************************************************")
+		lineNo = lineNo + 1
+		fmt.Printf("Percent %f\n", (float64(lineNo)/float64(noLines))*100)
 		logLine := scanner.Text()
-		_, _ = writeLine(l, logLine)
+		_, _ = l.writeLine(nginxParser, logLine, lineNo)
 
 		// Update progress interface
+		fmt.Println("#########################################################")
 	}
 
 	return nil
