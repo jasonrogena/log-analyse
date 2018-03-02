@@ -1,5 +1,0 @@
-package "persitence"
-
-func write() {
-	
-}

@@ -8,8 +8,11 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/jasonrogena/gonx"
+	"github.com/jasonrogena/log-analyse/sqlite"
 )
 
 func ingestOneOff(l Log) error {
@@ -31,6 +34,26 @@ func ingestOneOff(l Log) error {
 	}
 
 	// TODO: insert log file to database
+	db, err := sqlite.Connect()
+	defer db.Close()
+
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+
+	startTime := time.Now().Unix()
+	fmt.Println("About to call insert")
+	_, err = sqlite.Insert(
+		db,
+		"log_file",
+		"uuid",
+		[]string{"path", "no_lines", "start_time"},
+		[]string{l.path, strconv.Itoa(noLines), strconv.FormatInt(startTime, 10)})
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
 
 	// Read the file line by line
 	logFile.Seek(0, 0)

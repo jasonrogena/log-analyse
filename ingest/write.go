@@ -1,9 +1,6 @@
 package ingest
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/jasonrogena/gonx"
 )
 
@@ -19,15 +16,15 @@ func (log Log) writeLine(parser *gonx.Parser, line string, lineNo int) (uuid str
 	for _, curField := range fields {
 		switch curField.typ {
 		case typ_string:
-			strVal, err := entry.Field(curField.name)
-			if err == nil {
-				fmt.Fprintf(os.Stdout, "Value for %q is %q\n", curField.name, strVal)
+			_, strErr := entry.Field(curField.name)
+			if strErr == nil {
+				//fmt.Fprintf(os.Stdout, "Value for %q is %q\n", curField.name, strVal)
 				// TODO: insert log field to database
 			}
 		case typ_float:
-			fltVal, err := entry.FloatField(curField.name)
-			if err == nil {
-				fmt.Fprintf(os.Stdout, "Value for %q is %f\n", curField.name, fltVal)
+			_, fltErr := entry.FloatField(curField.name)
+			if fltErr == nil {
+				//fmt.Fprintf(os.Stdout, "Value for %q is %f\n", curField.name, fltVal)
 				// TODO: insert log field to database
 			}
 		}
