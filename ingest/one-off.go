@@ -9,7 +9,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/satyrius/gonx"
+	"github.com/jasonrogena/gonx"
 )
 
 func ingestOneOff(l Log) error {
@@ -30,6 +30,8 @@ func ingestOneOff(l Log) error {
 		return err
 	}
 
+	// TODO: insert log file to database
+
 	// Read the file line by line
 	logFile.Seek(0, 0)
 	lineNo := 0
@@ -37,14 +39,13 @@ func ingestOneOff(l Log) error {
 	scanner.Split(bufio.ScanLines)
 	nginxParser := gonx.NewParser(l.format)
 	for scanner.Scan() {
-		fmt.Println("*********************************************************")
 		lineNo = lineNo + 1
-		fmt.Printf("Percent %f\n", (float64(lineNo)/float64(noLines))*100)
 		logLine := scanner.Text()
-		_, _ = l.writeLine(nginxParser, logLine, lineNo)
-
-		// Update progress interface
-		fmt.Println("#########################################################")
+		_, err = l.writeLine(nginxParser, logLine, lineNo)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+		}
+		// TODO: Update progress interface
 	}
 
 	return nil

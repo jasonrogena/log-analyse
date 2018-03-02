@@ -1,0 +1,5 @@
+package "persitence"
+
+func write() {
+	
+}
