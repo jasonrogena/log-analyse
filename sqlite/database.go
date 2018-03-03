@@ -29,7 +29,8 @@ func Connect() (db *sql.DB, err error) {
 		uuid TEXT PRIMARY KEY,
 		field_type TEXT NOT NULL,
 		value_type TEXT NOT NULL,
-		value TEXT NOT NULL,
+		value_string TEXT NULL,
+		value_float FLOAT NULL,
 		start_time TIMESTAMP NOT NULL,
 		log_line_uuid TEXT NOT NULL,
 		FOREIGN KEY (log_line_uuid) REFERENCES log_line(uuid))`)
