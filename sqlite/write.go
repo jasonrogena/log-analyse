@@ -14,6 +14,7 @@ func Insert(db *sql.DB, table string, idColumn string, columns []string, values 
 		valueString := "?" + strings.Repeat(", ?", len(values))
 		query := "INSERT INTO " + table + " (" + columnsString + ") VALUES (" + valueString + ")"
 		stmt, err1 := db.Prepare(query)
+		defer stmt.Close()
 		if err1 != nil {
 			return "", err1
 		}

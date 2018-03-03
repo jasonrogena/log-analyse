@@ -11,7 +11,7 @@ import (
 	"github.com/jasonrogena/log-analyse/sqlite"
 )
 
-func (log Log) writeLine(db *sql.DB, parser *gonx.Parser, logFile *Log, line string, lineNo int) (string, error) {
+func (log Log) writeLine(db *sql.DB, parser *gonx.Parser, line string, lineNo int64) (string, error) {
 	entry, parseErr := parser.ParseString(line)
 	if parseErr != nil {
 		return "", parseErr
@@ -23,7 +23,7 @@ func (log Log) writeLine(db *sql.DB, parser *gonx.Parser, logFile *Log, line str
 		"log_line",
 		"uuid",
 		[]string{"line_no", "value", "start_time", "log_file_uuid"},
-		[]string{strconv.Itoa(lineNo), line, strconv.FormatInt(startTime, 10), logFile.uuid})
+		[]string{strconv.FormatInt(lineNo, 10), line, strconv.FormatInt(startTime, 10), log.uuid})
 	if lineInstErr != nil {
 		return "", lineInstErr
 	}

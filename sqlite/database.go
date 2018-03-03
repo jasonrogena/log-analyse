@@ -6,7 +6,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func Connect() (db *sql.DB, err error) {
+func Connect(write bool) (db *sql.DB, err error) {
 	db, err = sql.Open("sqlite3", "./log-analyse.sqlite")
 	if err != nil {
 		return
@@ -34,6 +34,9 @@ func Connect() (db *sql.DB, err error) {
 		start_time TIMESTAMP NOT NULL,
 		log_line_uuid TEXT NOT NULL,
 		FOREIGN KEY (log_line_uuid) REFERENCES log_line(uuid))`)
+	if write {
+		db.SetMaxOpenConns(1)
+	}
 	return
 }
 

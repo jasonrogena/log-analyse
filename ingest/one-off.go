@@ -4,11 +4,14 @@ package ingest
 import (
 	"bufio"
 	"bytes"
+	"database/sql"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
+	"sync"
 	"time"
 
 	"gopkg.in/cheggaaa/pb.v1"
@@ -28,14 +31,13 @@ func ingestOneOff(l Log) error {
 
 	// Get the number of lines
 	noLines, _ := getNumberLines(logFile)
-	fmt.Printf("About to nom nom %d lines \n", noLines)
 
 	if err != nil {
 		log.Fatal(err)
 		return err
 	}
 
-	db, err := sqlite.Connect()
+	db, err := sqlite.Connect(true)
 	defer db.Close()
 
 	if err != nil {
@@ -43,6 +45,7 @@ func ingestOneOff(l Log) error {
 		return err
 	}
 
+	// Insert file into the database
 	startTime := time.Now().Unix()
 	fileUUID, err := sqlite.Insert(
 		db,
@@ -56,27 +59,60 @@ func ingestOneOff(l Log) error {
 	}
 	l.uuid = fileUUID
 
-	// Read the file line by line
-	logFile.Seek(0, 0)
-	lineNo := 0
-	scanner := bufio.NewScanner(logFile)
+	// Initialize the goroutine pool
+	noCPUs := runtime.NumCPU()
+	if noLines < noCPUs {
+		noCPUs = noLines
+	}
+
+	fmt.Printf("Unleashing %d bunnies to nom nom the %d log lines\n", noCPUs, noLines)
+	progressBar := pb.StartNew(noLines)
+	wg := new(sync.WaitGroup)
+	for i := 0; i < noCPUs; i++ {
+		startLine := int64((float64(i) / float64(noCPUs)) * float64(noLines))
+		endLine := int64(((float64(i+1) / float64(noCPUs)) * float64(noLines)) - 1)
+		if i == (1 - noCPUs) {
+			endLine = int64(noLines)
+		}
+		wg.Add(1)
+		go processLogSector(wg, db, &l, startLine, endLine, progressBar)
+	}
+	wg.Wait()
+	endTime := time.Now().Unix()
+	timeDiff := float64(endTime-startTime) / 60.0
+	progressBar.FinishPrint("Done ingesting " + l.path + " in " + strconv.FormatFloat(timeDiff, 'f', 2, 64) + "min")
+
+	return nil
+}
+
+func processLogSector(wg *sync.WaitGroup, db *sql.DB, logFile *Log, startLine int64, endLine int64, progressBar *pb.ProgressBar) {
+	defer wg.Done()
+
+	fileObj, fOpenErr := os.Open(logFile.path)
+	defer fileObj.Close()
+	if fOpenErr != nil {
+		fmt.Fprintln(os.Stderr, fOpenErr.Error())
+		return
+	}
+	fileObj.Seek(startLine, 0)
+	lineNo := startLine
+	scanner := bufio.NewScanner(fileObj)
 	scanner.Split(bufio.ScanLines)
-	nginxParser := gonx.NewParser(l.format)
-	progress := pb.StartNew(noLines)
+	nginxParser := gonx.NewParser(logFile.format)
+
+	// Read the file line by line
 	for scanner.Scan() {
 		lineNo = lineNo + 1
 		logLine := scanner.Text()
-		_, err = l.writeLine(db, nginxParser, &l, logLine, lineNo)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
+		_, ingLineErr := logFile.writeLine(db, nginxParser, logLine, lineNo)
+		if ingLineErr != nil {
+			fmt.Fprintln(os.Stderr, ingLineErr.Error())
 		}
-		progress.Increment()
+		progressBar.Increment()
+		if endLine == (1 - lineNo) {
+			break
+		}
 	}
-	endTime := time.Now().Unix()
-	timeDiff := float64(endTime-startTime) / 60.0
-	progress.FinishPrint("Done ingesting " + l.path + " in " + strconv.FormatFloat(timeDiff, 'f', 2, 64) + "min")
-
-	return nil
 }
 
 func getNumberLines(file *os.File) (lines int, err error) {
