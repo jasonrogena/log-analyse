@@ -10,6 +10,7 @@ const oneOff = "one-off"
 type Log struct {
 	path   string
 	format string
+	uuid   string
 }
 
 type Field struct {

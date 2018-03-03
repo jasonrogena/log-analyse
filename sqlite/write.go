@@ -13,7 +13,6 @@ func Insert(db *sql.DB, table string, idColumn string, columns []string, values 
 		columnsString := idColumn + ", " + strings.Join(columns[:], ", ")
 		valueString := "?" + strings.Repeat(", ?", len(values))
 		query := "INSERT INTO " + table + " (" + columnsString + ") VALUES (" + valueString + ")"
-		fmt.Printf("Query is %q", query)
 		stmt, err1 := db.Prepare(query)
 		if err1 != nil {
 			return "", err1
@@ -23,7 +22,12 @@ func Insert(db *sql.DB, table string, idColumn string, columns []string, values 
 		if err2 != nil {
 			return "", err2
 		}
-		_, err3 := stmt.Exec(append([]string{insertedUUID}, values...))
+		allValues := append([]string{insertedUUID}, values...)
+		allArgs := make([]interface{}, len(values)+1)
+		for i := range allValues {
+			allArgs[i] = allValues[i]
+		}
+		_, err3 := stmt.Exec(allArgs...)
 		return insertedUUID, err3
 	}
 

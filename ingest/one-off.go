@@ -33,7 +33,6 @@ func ingestOneOff(l Log) error {
 		return err
 	}
 
-	// TODO: insert log file to database
 	db, err := sqlite.Connect()
 	defer db.Close()
 
@@ -44,7 +43,7 @@ func ingestOneOff(l Log) error {
 
 	startTime := time.Now().Unix()
 	fmt.Println("About to call insert")
-	_, err = sqlite.Insert(
+	fileUUID, err := sqlite.Insert(
 		db,
 		"log_file",
 		"uuid",
@@ -54,6 +53,7 @@ func ingestOneOff(l Log) error {
 		log.Fatal(err)
 		return err
 	}
+	l.uuid = fileUUID
 
 	// Read the file line by line
 	logFile.Seek(0, 0)
@@ -64,7 +64,7 @@ func ingestOneOff(l Log) error {
 	for scanner.Scan() {
 		lineNo = lineNo + 1
 		logLine := scanner.Text()
-		_, err = l.writeLine(nginxParser, logLine, lineNo)
+		_, err = l.writeLine(db, nginxParser, &l, logLine, lineNo)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 		}
