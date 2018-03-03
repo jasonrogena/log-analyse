@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"time"
 
+	"gopkg.in/cheggaaa/pb.v1"
+
 	"github.com/jasonrogena/gonx"
 	"github.com/jasonrogena/log-analyse/sqlite"
 )
@@ -26,7 +28,7 @@ func ingestOneOff(l Log) error {
 
 	// Get the number of lines
 	noLines, _ := getNumberLines(logFile)
-	fmt.Printf("Number of lines %d\n", noLines)
+	fmt.Printf("About to nom nom %d lines \n", noLines)
 
 	if err != nil {
 		log.Fatal(err)
@@ -42,7 +44,6 @@ func ingestOneOff(l Log) error {
 	}
 
 	startTime := time.Now().Unix()
-	fmt.Println("About to call insert")
 	fileUUID, err := sqlite.Insert(
 		db,
 		"log_file",
@@ -61,6 +62,7 @@ func ingestOneOff(l Log) error {
 	scanner := bufio.NewScanner(logFile)
 	scanner.Split(bufio.ScanLines)
 	nginxParser := gonx.NewParser(l.format)
+	progress := pb.StartNew(noLines)
 	for scanner.Scan() {
 		lineNo = lineNo + 1
 		logLine := scanner.Text()
@@ -68,8 +70,11 @@ func ingestOneOff(l Log) error {
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 		}
-		// TODO: Update progress interface
+		progress.Increment()
 	}
+	endTime := time.Now().Unix()
+	timeDiff := float64(endTime-startTime) / 60.0
+	progress.FinishPrint("Done ingesting " + l.path + " in " + strconv.FormatFloat(timeDiff, 'f', 2, 64) + "min")
 
 	return nil
 }

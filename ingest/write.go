@@ -24,7 +24,6 @@ func (log Log) writeLine(db *sql.DB, parser *gonx.Parser, logFile *Log, line str
 		"uuid",
 		[]string{"line_no", "value", "start_time", "log_file_uuid"},
 		[]string{strconv.Itoa(lineNo), line, strconv.FormatInt(startTime, 10), logFile.uuid})
-	fmt.Printf("Log line UUID %q\n", lineUUID)
 	if lineInstErr != nil {
 		return "", lineInstErr
 	}
