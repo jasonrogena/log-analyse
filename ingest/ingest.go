@@ -13,6 +13,11 @@ type Log struct {
 	uuid   string
 }
 
+type Line struct {
+	lineNo int64
+	value  string
+}
+
 type Field struct {
 	name string
 	typ  string

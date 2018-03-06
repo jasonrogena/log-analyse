@@ -65,18 +65,28 @@ func ingestOneOff(l Log) error {
 		noCPUs = noLines
 	}
 
+	// Create the goroutines
 	fmt.Printf("Unleashing %d bunnies to nom nom the %d log lines\n", noCPUs, noLines)
 	progressBar := pb.StartNew(noLines)
 	wg := new(sync.WaitGroup)
+	wg.Add(noCPUs)
+	logLines := make(chan Line, 100)
 	for i := 0; i < noCPUs; i++ {
-		startLine := int64((float64(i) / float64(noCPUs)) * float64(noLines))
-		endLine := int64(((float64(i+1) / float64(noCPUs)) * float64(noLines)) - 1)
-		if i == (1 - noCPUs) {
-			endLine = int64(noLines)
-		}
-		wg.Add(1)
-		go processLogSector(wg, db, &l, startLine, endLine, progressBar)
+		go processLog(wg, db, &l, logLines, progressBar)
 	}
+
+	// Send log lines to logLines channel
+	logFile.Seek(0, 0)
+	var lineNo int64
+	scanner := bufio.NewScanner(logFile)
+	scanner.Split(bufio.ScanLines)
+	for scanner.Scan() {
+		lineNo = lineNo + 1
+		curLine := Line{value: scanner.Text(), lineNo: lineNo}
+		logLines <- curLine
+	}
+	close(logLines)
+
 	wg.Wait()
 	endTime := time.Now().Unix()
 	timeDiff := float64(endTime-startTime) / 60.0
@@ -85,33 +95,18 @@ func ingestOneOff(l Log) error {
 	return nil
 }
 
-func processLogSector(wg *sync.WaitGroup, db *sql.DB, logFile *Log, startLine int64, endLine int64, progressBar *pb.ProgressBar) {
+func processLog(wg *sync.WaitGroup, db *sql.DB, logFile *Log, logLines <-chan Line, progressBar *pb.ProgressBar) {
 	defer wg.Done()
 
-	fileObj, fOpenErr := os.Open(logFile.path)
-	defer fileObj.Close()
-	if fOpenErr != nil {
-		fmt.Fprintln(os.Stderr, fOpenErr.Error())
-		return
-	}
-	fileObj.Seek(startLine, 0)
-	lineNo := startLine
-	scanner := bufio.NewScanner(fileObj)
-	scanner.Split(bufio.ScanLines)
 	nginxParser := gonx.NewParser(logFile.format)
 
-	// Read the file line by line
-	for scanner.Scan() {
-		lineNo = lineNo + 1
-		logLine := scanner.Text()
-		_, ingLineErr := logFile.writeLine(db, nginxParser, logLine, lineNo)
+	// Read lines out of the logLines channel
+	for line := range logLines {
+		_, ingLineErr := logFile.writeLine(db, nginxParser, line)
 		if ingLineErr != nil {
 			fmt.Fprintln(os.Stderr, ingLineErr.Error())
 		}
 		progressBar.Increment()
-		if endLine == (1 - lineNo) {
-			break
-		}
 	}
 }
 
