@@ -38,7 +38,7 @@ func ingestOneOff(l Log) error {
 	}
 
 	db, err := sqlite.Connect(true)
-	defer db.Close()
+	defer sqlite.Disconnect(db)
 
 	if err != nil {
 		log.Fatal(err)
@@ -52,7 +52,8 @@ func ingestOneOff(l Log) error {
 		"log_file",
 		"uuid",
 		[]string{"path", "no_lines", "start_time"},
-		[]string{l.path, strconv.Itoa(noLines), strconv.FormatInt(startTime, 10)})
+		[]string{l.path, strconv.Itoa(noLines), strconv.FormatInt(startTime, 10)},
+		true)
 	if err != nil {
 		log.Fatal(err)
 		return err

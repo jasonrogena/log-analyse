@@ -23,7 +23,8 @@ func (log Log) writeLine(db *sql.DB, parser *gonx.Parser, logLine Line) (string,
 		"log_line",
 		"uuid",
 		[]string{"line_no", "value", "start_time", "log_file_uuid"},
-		[]string{strconv.FormatInt(logLine.lineNo, 10), logLine.value, strconv.FormatInt(startTime, 10), log.uuid})
+		[]string{strconv.FormatInt(logLine.lineNo, 10), logLine.value, strconv.FormatInt(startTime, 10), log.uuid},
+		true)
 	if lineInstErr != nil {
 		return "", lineInstErr
 	}
@@ -40,7 +41,8 @@ func (log Log) writeLine(db *sql.DB, parser *gonx.Parser, logLine Line) (string,
 					"log_field",
 					"uuid",
 					[]string{"field_type", "value_type", "value_string", "start_time", "log_line_uuid"},
-					[]string{curField.name, typ_string, strVal, strconv.FormatInt(st, 10), lineUUID})
+					[]string{curField.name, typ_string, strVal, strconv.FormatInt(st, 10), lineUUID},
+					true)
 				if fieldInstErr != nil {
 					fmt.Fprintln(os.Stderr, fieldInstErr.Error())
 				}
@@ -54,7 +56,8 @@ func (log Log) writeLine(db *sql.DB, parser *gonx.Parser, logLine Line) (string,
 					"log_field",
 					"uuid",
 					[]string{"field_type", "value_type", "value_float", "start_time", "log_line_uuid"},
-					[]string{curField.name, typ_float, strconv.FormatFloat(fltVal, 'f', -1, 64), strconv.FormatInt(st, 10), lineUUID})
+					[]string{curField.name, typ_float, strconv.FormatFloat(fltVal, 'f', -1, 64), strconv.FormatInt(st, 10), lineUUID},
+					true)
 				if fieldInstErr != nil {
 					fmt.Fprintln(os.Stderr, fieldInstErr.Error())
 				}

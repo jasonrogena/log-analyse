@@ -7,6 +7,7 @@ import (
 )
 
 func Connect(write bool) (db *sql.DB, err error) {
+	writeCaches = make(map[string]*writeCache)
 	db, err = sql.Open("sqlite3", "./log-analyse.sqlite")
 	if err != nil {
 		return
@@ -17,7 +18,7 @@ func Connect(write bool) (db *sql.DB, err error) {
 		no_lines INTEGER NOT NULL,
 		start_time TIMESTAMP NOT NULL,
 		end_time TIMESTAMP NULL)`)
-
+	createWriteCache(db, "log_file", 10, []string{})
 	err = createTable(db, `CREATE TABLE IF NOT EXISTS log_line (
 		uuid TEXT PRIMARY KEY,
 		line_no INTEGER NOT NULL,
@@ -25,6 +26,7 @@ func Connect(write bool) (db *sql.DB, err error) {
 		start_time TIMESTAMP NOT NULL,
 		log_file_uuid TEXT NOT NULL,
 		FOREIGN KEY (log_file_uuid) REFERENCES log_file(uuid))`)
+	createWriteCache(db, "log_line", 50, []string{"log_file"})
 	err = createTable(db, `CREATE TABLE IF NOT EXISTS log_field (
 		uuid TEXT PRIMARY KEY,
 		field_type TEXT NOT NULL,
@@ -34,10 +36,18 @@ func Connect(write bool) (db *sql.DB, err error) {
 		start_time TIMESTAMP NOT NULL,
 		log_line_uuid TEXT NOT NULL,
 		FOREIGN KEY (log_line_uuid) REFERENCES log_line(uuid))`)
+	createWriteCache(db, "log_field", 200, []string{"log_line"})
 	if write {
 		db.SetMaxOpenConns(1)
+		openCache()
 	}
 	return
+}
+
+func Disconnect(db *sql.DB) {
+	defer db.Close()
+
+	closeCache()
 }
 
 func createTable(db *sql.DB, query string) (err error) {

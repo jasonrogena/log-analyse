@@ -2,22 +2,18 @@ package sqlite
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
 	uuid "github.com/satori/go.uuid"
 )
 
-func Insert(db *sql.DB, table string, idColumn string, columns []string, values []string) (string, error) {
+func Insert(db *sql.DB, table string, idColumn string, columns []string, values []string, cache bool) (string, error) {
 	if len(columns) == len(values) {
 		columnsString := idColumn + ", " + strings.Join(columns[:], ", ")
 		valueString := "?" + strings.Repeat(", ?", len(values))
 		query := "INSERT INTO " + table + " (" + columnsString + ") VALUES (" + valueString + ")"
-		stmt, err1 := db.Prepare(query)
-		defer stmt.Close()
-		if err1 != nil {
-			return "", err1
-		}
 
 		insertedUUID, err2 := genUUID()
 		if err2 != nil {
@@ -28,12 +24,38 @@ func Insert(db *sql.DB, table string, idColumn string, columns []string, values 
 		for i := range allValues {
 			allArgs[i] = allValues[i]
 		}
-		_, err3 := stmt.Exec(allArgs...)
-		return insertedUUID, err3
+
+		if cache {
+			return cacheInsert(db, table, query, allArgs, 0)
+		}
+
+		return runInsertQuery(db, query, allArgs, 0)
 	}
 
 	err3 := fmt.Errorf("Column count %d doesn't match value count %d", len(columns), len(values))
 	return "", err3
+}
+
+func runInsertQuery(db *sql.DB, query string, args []interface{}, idArg int) (string, error) {
+	stmt, err1 := db.Prepare(query)
+	defer closeStmt(stmt)
+
+	if err1 != nil {
+		return "", err1
+	}
+	_, err3 := stmt.Exec(args...)
+	insertedUUID, ok := args[idArg].(string)
+	if ok {
+		return insertedUUID, err3
+	}
+
+	return "", errors.New("Could not get the inserted UUID")
+}
+
+func closeStmt(stmt *sql.Stmt) {
+	if stmt != nil {
+		stmt.Close()
+	}
 }
 
 func genUUID() (string, error) {
