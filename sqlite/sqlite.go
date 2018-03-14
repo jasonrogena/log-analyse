@@ -3,12 +3,17 @@ package sqlite
 import (
 	"database/sql"
 
+	"github.com/jasonrogena/log-analyse/config"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 func Connect(write bool) (db *sql.DB, err error) {
 	writeCaches = make(map[string]*writeCache)
-	db, err = sql.Open("sqlite3", "./log-analyse.sqlite")
+	config, configErr := config.GetConfig()
+	if configErr != nil {
+		return nil, configErr
+	}
+	db, err = sql.Open("sqlite3", config.Database.File)
 	if err != nil {
 		return
 	}

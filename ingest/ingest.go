@@ -2,6 +2,9 @@ package ingest
 
 import (
 	"fmt"
+	"os"
+
+	"github.com/jasonrogena/log-analyse/config"
 )
 
 const Name = "ingest"
@@ -25,7 +28,6 @@ type Field struct {
 
 const typ_string string = "string"
 const typ_float string = "float"
-const ona_access_log_format string = `$http_x_forwarded_for - $remote_user [$time_local]  "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" $request_time $upstream_response_time $gzip_ratio`
 
 var fields = [...]Field{
 	{"http_x_forwarded_for", typ_string},
@@ -44,16 +46,28 @@ var fields = [...]Field{
 func Process(args []string) {
 	if len(args) == 2 {
 		ingestType := args[0]
-		log := Log{path: args[1], format: ona_access_log_format}
-		switch ingestType {
-		case oneOff:
-			ingestOneOff(log)
+		config, configErr := config.GetConfig()
+		if configErr == nil {
+			log := Log{path: args[1], format: config.Nginx.Format}
+			switch ingestType {
+			case oneOff:
+				ingestOneOff(log)
+			default:
+				fmt.Printf("Invalid ingest arguements\n\n")
+				printHelp()
+			}
+		} else {
+			fmt.Fprintln(os.Stderr, configErr)
 		}
 	} else {
+		fmt.Printf("Invalid ingest arguements\n\n")
 		printHelp()
 	}
 }
 
 func printHelp() {
-	fmt.Println("Invalid ingest arguements")
+	fmt.Printf("Usage %s %s <command>\n\n", os.Args[0], os.Args[1])
+	fmt.Printf("Common commands:\n")
+	fmt.Printf("\tone-off\t\tIngests the provided file from start to finish\n\n")
+	fmt.Printf("\t\t\t\t%s %s one-off <path to log file>\n\n", os.Args[0], os.Args[1])
 }
