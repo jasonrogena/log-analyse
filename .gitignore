@@ -1,3 +1,4 @@
 log-analyse
 *.sqlite*
 log-analyse.toml
+log-analyse-darwin-amd64
