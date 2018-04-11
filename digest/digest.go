@@ -2,7 +2,39 @@ package digest
 
 import (
 	"sort"
+	"github.com/jasonrogena/log-analyse/types"
 )
+
+type UrlPathDigester struct {
+	tree *Tree
+}
+
+func (digester UrlPathDigester) Absorb() (err error) {
+	err = digester.tree.generalizeTree()
+	return
+}
+
+func (digester UrlPathDigester) Digest(logLine interface{}) error {
+	// TODO: implement this
+}
+
+func (digester UrlPathDigester) IsDigestable(someData interface{}) bool {
+	field, ok := someData.(types.Field)
+	if ok {
+		if field.FieldType == "request" {
+			return true
+		}
+	}
+	return false
+}
+
+func InitUrlPathDigester(rbfsLayerCap int) (digester UrlPathDigester) {
+	rootNodes := make(map[string]*TreeNode)
+	index := make(map[int]map[string]*TreeNode)
+	tree := Tree{rootNodes:rootNodes, inOrderNodeIndex: index, rbfsLayerCap: rbfsLayerCap}
+	digester = UrlPathDigester{tree:&tree}
+	return
+}
 
 func (tree *Tree) generalizeTree() error {
 	// Use reverse breadth first search to travers the tree, starting from it's leaf nodes
@@ -20,6 +52,8 @@ func (tree *Tree) generalizeTree() error {
 			tree.inOrderNodeIndex[curLayer][curUUID].generalizeTreeNode(tree)
 		}
 	}
+
+	// TODO: save data in the database
 
 	return nil
 }

@@ -7,6 +7,8 @@ import (
 type Config struct {
 	Nginx    Nginx
 	Database Database
+	Ingest   Ingest
+	Digest   Digest
 }
 
 type Nginx struct {
@@ -15,6 +17,14 @@ type Nginx struct {
 
 type Database struct {
 	File string
+}
+
+type Ingest struct {
+	PiggyBackDigest bool
+}
+
+type Digest struct {
+	RbfsLayerCap int
 }
 
 const configPath string = "./log-analyse.toml"

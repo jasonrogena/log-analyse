@@ -3,3 +3,9 @@ format = "$http_x_forwarded_for - $remote_user [$time_local]  \"$request\" $stat
 
 [database]
 file = "./log-analyse.sqlite"
+
+[ingest]
+piggyBackDigest = true
+
+[digest]
+rbfsLayerCap = 1

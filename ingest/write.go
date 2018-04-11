@@ -8,11 +8,13 @@ import (
 	"time"
 
 	"github.com/jasonrogena/gonx"
+	"github.com/jasonrogena/log-analyse/config"
 	"github.com/jasonrogena/log-analyse/sqlite"
+	"github.com/jasonrogena/log-analyse/types"
 )
 
-func (log Log) writeLine(db *sql.DB, parser *gonx.Parser, logLine Line) (string, error) {
-	entry, parseErr := parser.ParseString(logLine.value)
+func writeLine(db *sql.DB, conf *config.Config, parser *gonx.Parser, log *types.Log, logLine types.Line, digesters []*digester) (string, error) {
+	entry, parseErr := parser.ParseString(logLine.Value)
 	if parseErr != nil {
 		return "", parseErr
 	}
@@ -23,7 +25,7 @@ func (log Log) writeLine(db *sql.DB, parser *gonx.Parser, logLine Line) (string,
 		"log_line",
 		"uuid",
 		[]string{"line_no", "value", "start_time", "log_file_uuid"},
-		[]string{strconv.FormatInt(logLine.lineNo, 10), logLine.value, strconv.FormatInt(startTime, 10), log.uuid},
+		[]string{strconv.FormatInt(logLine.LineNo, 10), logLine.Value, strconv.FormatInt(startTime, 10), log.UUID},
 		true)
 	if lineInstErr != nil {
 		return "", lineInstErr
@@ -36,7 +38,7 @@ func (log Log) writeLine(db *sql.DB, parser *gonx.Parser, logLine Line) (string,
 			strVal, strErr := entry.Field(curField.name)
 			if strErr == nil {
 				st := time.Now().Unix()
-				_, fieldInstErr := sqlite.Insert(
+				fieldUUID, fieldInstErr := sqlite.Insert(
 					db,
 					"log_field",
 					"uuid",
@@ -45,6 +47,9 @@ func (log Log) writeLine(db *sql.DB, parser *gonx.Parser, logLine Line) (string,
 					true)
 				if fieldInstErr != nil {
 					fmt.Fprintln(os.Stderr, fieldInstErr.Error())
+				} else if conf.Ingest.PiggyBackDigest {
+					field := types.Field{UUID: fieldUUID, FieldType: curField.name, ValueType: typ_string, ValueString: strVal, startTime: st}
+					sendToDigesters(&field, digesters)
 				}
 			}
 		case typ_float:
@@ -60,9 +65,20 @@ func (log Log) writeLine(db *sql.DB, parser *gonx.Parser, logLine Line) (string,
 					true)
 				if fieldInstErr != nil {
 					fmt.Fprintln(os.Stderr, fieldInstErr.Error())
+				} else if conf.Ingest.PiggyBackDigest {
+					field := types.Field{UUID: fieldUUID, FieldType: curField.name, ValueType: typ_float, ValueFloat: fltVal, startTime: st}
+					sendToDigesters(&field, digesters)
 				}
 			}
 		}
 	}
 	return lineUUID, nil
+}
+
+func sendToDigesters(field *types.Field, digesters []*digester) {
+	for _, curDigester := range digesters {
+		if curDigester.IsDigestable(field) {
+			curDigester.Digest(field)
+		}
+	}
 }
