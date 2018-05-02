@@ -81,12 +81,16 @@ func (node *TreeNode) addChild(tree *Tree, newChild *TreeNode) error {
 	newChild.parent = node
 	newChild.level = node.level + 1
 
-	if _, ok := tree.inOrderNodeIndex[newChild.level]; !ok {
-		tree.inOrderNodeIndex[newChild.level] = make(map[string]*TreeNode)
-	}
-	tree.inOrderNodeIndex[newChild.level][newChild.uuid] = newChild
+	tree.addNodeToIndex(newChild)
 
 	return nil
+}
+
+func (tree *Tree) addNodeToIndex(node *TreeNode) {
+	if _, ok := tree.inOrderNodeIndex[node.level]; !ok {
+		tree.inOrderNodeIndex[node.level] = make(map[string]*TreeNode)
+	}
+	tree.inOrderNodeIndex[node.level][node.uuid] = node
 }
 
 func (node *TreeNode) removeChild(tree *Tree, child *TreeNode) error {

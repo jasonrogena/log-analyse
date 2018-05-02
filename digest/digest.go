@@ -1,6 +1,7 @@
 package digest
 
 import (
+	"strings"
 	"sort"
 	"github.com/jasonrogena/log-analyse/types"
 )
@@ -14,18 +15,84 @@ func (digester UrlPathDigester) Absorb() (err error) {
 	return
 }
 
-func (digester UrlPathDigester) Digest(logLine interface{}) error {
-	// TODO: implement this
+func getField(someData interface{}) (*types.Field, bool) {
+	field, ok := someData.(*types.Field)
+	if ok {
+		if field.FieldType != "request" {
+			ok = false
+		}
+	}
+	return field, ok
+}
+
+func (digester UrlPathDigester) Digest(someData interface{}) error {
+	field, fieldOk := getField(types.Field)
+	if fieldOk && len(field.ValueString) > 0 {
+		//GET /api/v1/forms/197928.json?a=dfds HTTP/1.1
+		reqPartsArr := strings.Split(field.ValueString, " ")
+		if len(reqPartsArr) == 3 {
+			reqPathWithArgs := reqPartsArr[2]
+			reqPathParts := strings.Split(reqPathWithArgs, "?")
+			cleanReqPath := reqPathParts[0]
+			cleanReqPathParts := strings.Split(cleanReqPath, "/")
+			digester.tree.addRequestPath(nil, &digester.tree.rootNodes, cleanReqPathParts, -1)
+		}
+	}
+}
+
+func (tree *Tree)addRequestPath(parentNode *TreeNode, nodes *map[string]*TreeNode, requestPathParts []string, lastVisitedPathIndex int) error {
+	if lastVisitedPathIndex < len(requestPathParts) {
+		nodeFound := false
+		var foundNode *TreeNode
+		pathIndex := lastVisitedPathIndex + 1
+		for _, curNode := range nodes {
+			if curNode.value == GENERIC_VALUE {
+				for curCombinedValue := range curNode.combinedValues {
+					if curCombinedValue == requestPathParts[pathIndex] {
+						nodeFound = true
+						break
+					}
+				}
+			} else if curNode.value == requestPathParts[pathIndex] {
+				nodeFound = true
+			}
+
+			if nodeFound {
+				foundNode = curNode
+				break
+			}
+		}
+
+		if !nodeFound {// no node in current level has the value
+			newNodeUuid, uuidErr := genUUID()
+			if uuidErr != nil {
+				return uuidErr
+			}
+			newTreeNode := TreeNode{level:pathIndex, uuid: newNodeUuid, value: requestPathParts[pathIndex], parent:parentNode}
+			foundNode = &newTreeNode
+			
+			if parentNode == nil {// newTreeNode is a root node
+				tree.addNodeToIndex(foundNode)
+				nodes[foundNode.uuid] = foundNode
+			} else {
+				parentNode.addChild(tree, foundNode)
+			}			
+		}
+
+		if foundNode != nil {
+			addReqErr := tree.addRequestPath(foundNode, &foundNode.children, requestPathParts, pathIndex)
+			if addReqErr != nil {
+				return addReqErr
+			}
+		}
+	}
+
+	return nil
 }
 
 func (digester UrlPathDigester) IsDigestable(someData interface{}) bool {
-	field, ok := someData.(types.Field)
-	if ok {
-		if field.FieldType == "request" {
-			return true
-		}
-	}
-	return false
+	field, ok := getField(types.Field)
+	return ok
 }
 
 func InitUrlPathDigester(rbfsLayerCap int) (digester UrlPathDigester) {
