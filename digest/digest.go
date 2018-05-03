@@ -1,8 +1,9 @@
 package digest
 
 import (
-	"strings"
 	"sort"
+	"strings"
+
 	"github.com/jasonrogena/log-analyse/types"
 )
 
@@ -18,7 +19,7 @@ func (digester UrlPathDigester) Absorb() (err error) {
 func getField(someData interface{}) (*types.Field, bool) {
 	field, ok := someData.(*types.Field)
 	if ok {
-		if field.FieldType != "request" {
+		if field.FieldType.Name != "request" {
 			ok = false
 		}
 	}
@@ -26,7 +27,7 @@ func getField(someData interface{}) (*types.Field, bool) {
 }
 
 func (digester UrlPathDigester) Digest(someData interface{}) error {
-	field, fieldOk := getField(types.Field)
+	field, fieldOk := getField(someData)
 	if fieldOk && len(field.ValueString) > 0 {
 		//GET /api/v1/forms/197928.json?a=dfds HTTP/1.1
 		reqPartsArr := strings.Split(field.ValueString, " ")
@@ -35,20 +36,25 @@ func (digester UrlPathDigester) Digest(someData interface{}) error {
 			reqPathParts := strings.Split(reqPathWithArgs, "?")
 			cleanReqPath := reqPathParts[0]
 			cleanReqPathParts := strings.Split(cleanReqPath, "/")
-			digester.tree.addRequestPath(nil, &digester.tree.rootNodes, cleanReqPathParts, -1)
+			addPathErr := digester.tree.addRequestPath(nil, digester.tree.rootNodes, cleanReqPathParts, -1, field)
+			if addPathErr != nil {
+				return addPathErr
+			}
 		}
 	}
+
+	return nil
 }
 
-func (tree *Tree)addRequestPath(parentNode *TreeNode, nodes *map[string]*TreeNode, requestPathParts []string, lastVisitedPathIndex int) error {
+func (tree *Tree) addRequestPath(parentNode *TreeNode, nodes map[string]*TreeNode, requestPathParts []string, lastVisitedPathIndex int, field *types.Field) error {
 	if lastVisitedPathIndex < len(requestPathParts) {
 		nodeFound := false
 		var foundNode *TreeNode
 		pathIndex := lastVisitedPathIndex + 1
 		for _, curNode := range nodes {
 			if curNode.value == GENERIC_VALUE {
-				for curCombinedValue := range curNode.combinedValues {
-					if curCombinedValue == requestPathParts[pathIndex] {
+				for curCombinedIndex := range curNode.combinedValues {
+					if curNode.combinedValues[curCombinedIndex] == requestPathParts[pathIndex] {
 						nodeFound = true
 						break
 					}
@@ -63,26 +69,30 @@ func (tree *Tree)addRequestPath(parentNode *TreeNode, nodes *map[string]*TreeNod
 			}
 		}
 
-		if !nodeFound {// no node in current level has the value
+		if !nodeFound { // no node in current level has the value
 			newNodeUuid, uuidErr := genUUID()
 			if uuidErr != nil {
 				return uuidErr
 			}
-			newTreeNode := TreeNode{level:pathIndex, uuid: newNodeUuid, value: requestPathParts[pathIndex], parent:parentNode}
+			newTreeNode := TreeNode{level: pathIndex, uuid: newNodeUuid, value: requestPathParts[pathIndex], parent: parentNode}
 			foundNode = &newTreeNode
-			
-			if parentNode == nil {// newTreeNode is a root node
+
+			if parentNode == nil { // newTreeNode is a root node
 				tree.addNodeToIndex(foundNode)
 				nodes[foundNode.uuid] = foundNode
 			} else {
 				parentNode.addChild(tree, foundNode)
-			}			
+			}
 		}
 
 		if foundNode != nil {
-			addReqErr := tree.addRequestPath(foundNode, &foundNode.children, requestPathParts, pathIndex)
-			if addReqErr != nil {
-				return addReqErr
+			if pathIndex == len(requestPathParts)-1 { // leaf node for this request path
+				foundNode.payload = append(foundNode.payload, field)
+			} else {
+				addReqErr := tree.addRequestPath(foundNode, foundNode.children, requestPathParts, pathIndex, field)
+				if addReqErr != nil {
+					return addReqErr
+				}
 			}
 		}
 	}
@@ -91,15 +101,15 @@ func (tree *Tree)addRequestPath(parentNode *TreeNode, nodes *map[string]*TreeNod
 }
 
 func (digester UrlPathDigester) IsDigestable(someData interface{}) bool {
-	field, ok := getField(types.Field)
+	_, ok := getField(someData)
 	return ok
 }
 
 func InitUrlPathDigester(rbfsLayerCap int) (digester UrlPathDigester) {
 	rootNodes := make(map[string]*TreeNode)
 	index := make(map[int]map[string]*TreeNode)
-	tree := Tree{rootNodes:rootNodes, inOrderNodeIndex: index, rbfsLayerCap: rbfsLayerCap}
-	digester = UrlPathDigester{tree:&tree}
+	tree := Tree{rootNodes: rootNodes, inOrderNodeIndex: index, rbfsLayerCap: rbfsLayerCap}
+	digester = UrlPathDigester{tree: &tree}
 	return
 }
 
@@ -113,9 +123,9 @@ func (tree *Tree) generalizeTree() error {
 	sort.Ints(treeLayers)
 
 	// perform the traversal, starting from the bottom most (bottom most leafs) layer
-	for curIndex := len(treeLayers) - 1; curIndex--; curIndex >= 0 {
+	for curIndex := len(treeLayers) - 1; curIndex >= 0; curIndex-- {
 		curLayer := treeLayers[curIndex]
-		for curUUID := range tree.inOrderNodeIndex[curLayer] {//TODO: Does range work with growing map
+		for curUUID := range tree.inOrderNodeIndex[curLayer] { //TODO: Does range work with growing map
 			tree.inOrderNodeIndex[curLayer][curUUID].generalizeTreeNode(tree)
 		}
 	}
@@ -133,7 +143,7 @@ func (node *TreeNode) generalizeTreeNode(tree *Tree) error {
 			childUUIDS = append(childUUIDS, curUUID)
 		}
 
-		for x,_ := range childUUIDS {
+		for x, _ := range childUUIDS {
 			if _, xOk := node.children[childUUIDS[x]]; xOk {
 				var equivalentSiblings []string
 				for y := x + 1; y < len(childUUIDS); y++ {

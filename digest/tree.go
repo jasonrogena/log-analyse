@@ -21,6 +21,7 @@ type TreeNode struct {
 	combinedValues []string
 	children       map[string]*TreeNode
 	parent         *TreeNode
+	payload        []interface{}
 }
 
 func (node *TreeNode) getSiblings() []*TreeNode {
@@ -115,6 +116,47 @@ func (node *TreeNode) addCombinedValue(value string) {
 	}
 }
 
+func (node *TreeNode) phagocytose(weakNode *TreeNode, includeChildren bool) {
+	// copy over the value
+	if weakNode.value != GENERIC_VALUE {
+		node.addCombinedValue(weakNode.value)
+	}
+
+	for _, curCombinedValue := range weakNode.combinedValues {
+		node.addCombinedValue(curCombinedValue)
+	}
+
+	// copy over the payloads
+	node.payload = append(node.payload, weakNode.payload...)
+
+	if includeChildren {
+		var weakNodeChildrenKeys []string
+		for curKey, _ := range weakNode.children {
+			weakNodeChildrenKeys = append(weakNodeChildrenKeys, curKey)
+		}
+
+		for _, curMasterChild := range node.children {
+			indexToRemove := -1
+			for i := 0; i < len(weakNodeChildrenKeys); i++ {
+				curWeakChild := weakNode.children[weakNodeChildrenKeys[i]]
+				if curMasterChild.value == curWeakChild.value {
+					curMasterChild.phagocytose(curWeakChild, true)
+					indexToRemove = i
+					break
+				}
+			}
+
+			if indexToRemove != -1 {
+				if indexToRemove == len(weakNodeChildrenKeys)-1 {
+					weakNodeChildrenKeys = weakNodeChildrenKeys[:indexToRemove]
+				} else {
+					weakNodeChildrenKeys = append(weakNodeChildrenKeys[:indexToRemove], weakNodeChildrenKeys[indexToRemove+1:]...)
+				}
+			}
+		}
+	}
+}
+
 func (node *TreeNode) combineChildren(tree *Tree, uuids []string) error {
 	newChild := new(TreeNode)
 	childUUID, uuidErr := genUUID()
@@ -128,20 +170,16 @@ func (node *TreeNode) combineChildren(tree *Tree, uuids []string) error {
 
 	for _, curUUID := range uuids {
 		if curChild, ok := node.children[curUUID]; ok {
+			includeItsChildren := true
 			if len(newChild.children) == 0 && len(curChild.children) > 0 {
+				includeItsChildren = false
 				newChild.children = curChild.children
 				for _, curNewGrandchild := range newChild.children {
 					curNewGrandchild.parent = newChild
 				}
 			}
 
-			if curChild.value != GENERIC_VALUE {
-				newChild.addCombinedValue(curChild.value)
-			}
-
-			for _, curCombinedValue := range curChild.combinedValues {
-				newChild.addCombinedValue(curCombinedValue)
-			}
+			newChild.phagocytose(curChild, includeItsChildren)
 			node.removeChild(tree, curChild)
 		}
 	}
