@@ -58,15 +58,15 @@ func Process(args []string) {
 	}
 }
 
-func getDigesters() (digesters []*digester, err error) {
+func getDigesters() (digesters []digester, err error) {
 	config, configErr := config.GetConfig()
 	if configErr != nil {
 		err = configErr
 		return
 	}
 
-	urlPathDigester := digest.InitUrlPathDigester(config.Digest.RbfsLayerCap)
-	digesters = append(digesters, &urlPathDigester)
+	var urlPathDigInterface digester = digest.InitUrlPathDigester(config.Digest.RbfsLayerCap)
+	digesters = append(digesters, urlPathDigInterface)
 
 	return
 }

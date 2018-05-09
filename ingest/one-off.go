@@ -22,7 +22,7 @@ import (
 	"github.com/jasonrogena/log-analyse/types"
 )
 
-func ingestOneOff(l types.Log, digesters []*digester) error {
+func ingestOneOff(l types.Log, digesters []digester) error {
 	logFile, err := os.Open(l.Path)
 	defer logFile.Close()
 
@@ -76,11 +76,16 @@ func ingestOneOff(l types.Log, digesters []*digester) error {
 	// Create the goroutines
 	fmt.Printf("Unleashing %d bunnies to nom nom the %d log lines\n", noCPUs, noLines)
 	progressBar := pb.StartNew(noLines)
-	wg := new(sync.WaitGroup)
-	wg.Add(noCPUs)
+	linesWG := new(sync.WaitGroup)
+	linesWG.Add(noCPUs)
+
+	fieldsWG := new(sync.WaitGroup)
+	fieldsWG.Add(1)
+	logFieldsChan := make(chan types.Field, 10000)
+	go startDigestingFields(fieldsWG, digesters, logFieldsChan)
 	logLines := make(chan types.Line, 100)
 	for i := 0; i < noCPUs; i++ {
-		go processLog(wg, db, &conf, &l, logLines, progressBar, digesters)
+		go processLog(linesWG, db, &conf, &l, logLines, noLines, progressBar, logFieldsChan)
 	}
 
 	// Send log lines to logLines channel
@@ -95,7 +100,10 @@ func ingestOneOff(l types.Log, digesters []*digester) error {
 	}
 	close(logLines)
 
-	wg.Wait()
+	linesWG.Wait() // wait for all the lines to be processed
+	close(logFieldsChan)
+	fieldsWG.Wait() // wait for all fields to be absorbed
+
 	endTime := time.Now().Unix()
 	timeDiff := float64(endTime-startTime) / 60.0
 	progressBar.FinishPrint("Done ingesting " + l.Path + " in " + strconv.FormatFloat(timeDiff, 'f', 2, 64) + "min")
@@ -110,12 +118,12 @@ func ingestOneOff(l types.Log, digesters []*digester) error {
 		progressBar = pb.StartNew(len(digesters))
 		startTime = time.Now().Unix()
 
-		wg = new(sync.WaitGroup)
-		wg.Add(noCPUs)
-		digesterChan := make(chan *digester, 10)
+		digestWG := new(sync.WaitGroup)
+		digestWG.Add(noCPUs)
+		digesterChan := make(chan digester, 10)
 
 		for i := 0; i < noCPUs; i++ {
-			go startDigesterAbsorb(wg, digesterChan, progressBar)
+			go startDigesterAbsorb(digestWG, digesterChan, progressBar)
 		}
 
 		// Send the digesters to the waiting threads
@@ -124,7 +132,7 @@ func ingestOneOff(l types.Log, digesters []*digester) error {
 		}
 		close(digesterChan)
 
-		wg.Wait()
+		digestWG.Wait()
 		endTime = time.Now().Unix()
 		timeDiff = float64(endTime-startTime) / 60.0
 		progressBar.FinishPrint("Done digesting in " + strconv.FormatFloat(timeDiff, 'f', 2, 64) + "min")
@@ -133,14 +141,14 @@ func ingestOneOff(l types.Log, digesters []*digester) error {
 	return nil
 }
 
-func processLog(wg *sync.WaitGroup, db *sql.DB, cfg *config.Config, logFile *types.Log, logLines <-chan types.Line, progressBar *pb.ProgressBar, digesters []*digester) {
+func processLog(wg *sync.WaitGroup, db *sql.DB, cfg *config.Config, logFile *types.Log, logLines <-chan types.Line, noLines int, progressBar *pb.ProgressBar, logFields chan types.Field) {
 	defer wg.Done()
 
 	nginxParser := gonx.NewParser(logFile.Format)
 
 	// Read lines out of the logLines channel
 	for line := range logLines {
-		_, ingLineErr := writeLine(db, cfg, nginxParser, logFile, line, digesters)
+		_, ingLineErr := writeLine(db, cfg, nginxParser, logFile, line, logFields)
 		if ingLineErr != nil {
 			fmt.Fprintln(os.Stderr, ingLineErr.Error())
 		}
@@ -153,6 +161,9 @@ func startDigesterAbsorb(wg *sync.WaitGroup, digesters <-chan digester, progress
 
 	for curDigester := range digesters {
 		digestErr := curDigester.Absorb()
+		if digestErr != nil {
+			fmt.Fprintln(os.Stderr, digestErr.Error())
+		}
 		progressBar.Increment()
 	}
 }

@@ -1,6 +1,7 @@
 package digest
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -130,9 +131,32 @@ func (tree *Tree) generalizeTree() error {
 		}
 	}
 
-	// TODO: save data in the database
+	// write to the database
+	for curIndex := len(treeLayers) - 1; curIndex >= 0; curIndex-- {
+		curLayer := treeLayers[curIndex]
+		for curUUID := range tree.inOrderNodeIndex[curLayer] {
+			if len(tree.inOrderNodeIndex[curLayer][curUUID].payload) > 0 {
+				curNode := tree.inOrderNodeIndex[curLayer][curUUID]
+				nodePath := curNode.reconstructPath("")
+				fmt.Printf("About to store %q as a generalized path\n", nodePath)
+			}
+		}
+	}
 
 	return nil
+}
+
+func (node *TreeNode) reconstructPath(curPath string) string {
+	if len(curPath) > 0 {
+		curPath = "/" + curPath
+	}
+	curPath = node.value + curPath
+
+	if node.parent != nil {
+		curPath = node.parent.reconstructPath(curPath)
+	}
+
+	return curPath
 }
 
 func (node *TreeNode) generalizeTreeNode(tree *Tree) error {
