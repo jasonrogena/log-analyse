@@ -78,6 +78,9 @@ func (node *TreeNode) addChild(tree *Tree, newChild *TreeNode) error {
 		return errors.New("Child already exists with uuid " + newChild.uuid + " cannot add another child with the same uuid")
 	}
 
+	if node.children == nil {
+		node.children = make(map[string]*TreeNode)
+	}
 	node.children[newChild.uuid] = newChild
 	newChild.parent = node
 	newChild.level = node.level + 1
@@ -102,6 +105,14 @@ func (node *TreeNode) removeChild(tree *Tree, child *TreeNode) error {
 	return nil
 }
 
+func (node *TreeNode) getNoValuePermutations() int {
+	if node.value == GENERIC_VALUE {
+		return len(node.combinedValues)
+	}
+
+	return 1
+}
+
 func (node *TreeNode) addCombinedValue(value string) {
 	found := false
 	for _, curValue := range node.combinedValues {
@@ -116,7 +127,7 @@ func (node *TreeNode) addCombinedValue(value string) {
 	}
 }
 
-func (node *TreeNode) phagocytose(weakNode *TreeNode, includeChildren bool) {
+func (node *TreeNode) phagocytose(tree *Tree, weakNode *TreeNode, includeChildren bool) {
 	// copy over the value
 	if weakNode.value != GENERIC_VALUE {
 		node.addCombinedValue(weakNode.value)
@@ -140,7 +151,8 @@ func (node *TreeNode) phagocytose(weakNode *TreeNode, includeChildren bool) {
 			for i := 0; i < len(weakNodeChildrenKeys); i++ {
 				curWeakChild := weakNode.children[weakNodeChildrenKeys[i]]
 				if curMasterChild.value == curWeakChild.value {
-					curMasterChild.phagocytose(curWeakChild, true)
+					curMasterChild.phagocytose(tree, curWeakChild, true)
+					//weakNode.removeChild(tree, curWeakChild)
 					indexToRemove = i
 					break
 				}
@@ -155,6 +167,8 @@ func (node *TreeNode) phagocytose(weakNode *TreeNode, includeChildren bool) {
 			}
 		}
 	}
+
+	weakNode.parent.removeChild(tree, weakNode)
 }
 
 func (node *TreeNode) combineChildren(tree *Tree, uuids []string) error {
@@ -179,8 +193,8 @@ func (node *TreeNode) combineChildren(tree *Tree, uuids []string) error {
 				}
 			}
 
-			newChild.phagocytose(curChild, includeItsChildren)
-			node.removeChild(tree, curChild)
+			newChild.phagocytose(tree, curChild, includeItsChildren)
+			//node.removeChild(tree, curChild)
 		}
 	}
 

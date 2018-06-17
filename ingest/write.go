@@ -8,13 +8,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jasonrogena/log-analyse/digest"
+
 	"github.com/jasonrogena/gonx"
 	"github.com/jasonrogena/log-analyse/config"
 	"github.com/jasonrogena/log-analyse/sqlite"
 	"github.com/jasonrogena/log-analyse/types"
 )
 
-func writeLine(db *sql.DB, conf *config.Config, parser *gonx.Parser, log *types.Log, logLine types.Line, logFields chan types.Field) (string, error) {
+func writeLine(db *sql.DB, conf *config.Config, parser *gonx.Parser, log *types.Log, logLine types.Line, logFields chan *types.Field) (string, error) {
 	entry, parseErr := parser.ParseString(logLine.Value)
 	if parseErr != nil {
 		return "", parseErr
@@ -50,7 +52,7 @@ func writeLine(db *sql.DB, conf *config.Config, parser *gonx.Parser, log *types.
 					fmt.Fprintln(os.Stderr, fieldInstErr.Error())
 				} else if conf.Ingest.PiggyBackDigest {
 					field := types.Field{UUID: fieldUUID, FieldType: curField, ValueType: typ_string, ValueString: strVal, StartTime: st}
-					logFields <- field
+					logFields <- &field
 				}
 			}
 		case typ_float:
@@ -68,7 +70,7 @@ func writeLine(db *sql.DB, conf *config.Config, parser *gonx.Parser, log *types.
 					fmt.Fprintln(os.Stderr, fieldInstErr.Error())
 				} else if conf.Ingest.PiggyBackDigest {
 					field := types.Field{UUID: fieldUUID, FieldType: curField, ValueType: typ_float, ValueFloat: fltVal, StartTime: st}
-					logFields <- field
+					logFields <- &field
 				}
 			}
 		}
@@ -76,13 +78,13 @@ func writeLine(db *sql.DB, conf *config.Config, parser *gonx.Parser, log *types.
 	return lineUUID, nil
 }
 
-func startDigestingFields(wg *sync.WaitGroup, digesters []digester, fields <-chan types.Field) {
+func startDigestingFields(wg *sync.WaitGroup, conf *config.Config, digesters []digester, fields <-chan *types.Field) {
 	defer wg.Done()
 
 	for curField := range fields {
 		for _, curDigester := range digesters {
 			if curDigester.IsDigestable(curField) {
-				digestErr := curDigester.Digest(curField)
+				digestErr := curDigester.Digest(digest.DigestPayload{Field: curField, Cnf: conf})
 				if digestErr != nil {
 					fmt.Fprintln(os.Stderr, digestErr.Error())
 				}

@@ -81,8 +81,8 @@ func ingestOneOff(l types.Log, digesters []digester) error {
 
 	fieldsWG := new(sync.WaitGroup)
 	fieldsWG.Add(1)
-	logFieldsChan := make(chan types.Field, 10000)
-	go startDigestingFields(fieldsWG, digesters, logFieldsChan)
+	logFieldsChan := make(chan *types.Field, 10000)
+	go startDigestingFields(fieldsWG, &conf, digesters, logFieldsChan)
 	logLines := make(chan types.Line, 100)
 	for i := 0; i < noCPUs; i++ {
 		go processLog(linesWG, db, &conf, &l, logLines, noLines, progressBar, logFieldsChan)
@@ -123,7 +123,7 @@ func ingestOneOff(l types.Log, digesters []digester) error {
 		digesterChan := make(chan digester, 10)
 
 		for i := 0; i < noCPUs; i++ {
-			go startDigesterAbsorb(digestWG, digesterChan, progressBar)
+			go startDigesterAbsorb(digestWG, digesterChan, &conf, progressBar)
 		}
 
 		// Send the digesters to the waiting threads
@@ -141,7 +141,7 @@ func ingestOneOff(l types.Log, digesters []digester) error {
 	return nil
 }
 
-func processLog(wg *sync.WaitGroup, db *sql.DB, cfg *config.Config, logFile *types.Log, logLines <-chan types.Line, noLines int, progressBar *pb.ProgressBar, logFields chan types.Field) {
+func processLog(wg *sync.WaitGroup, db *sql.DB, cfg *config.Config, logFile *types.Log, logLines <-chan types.Line, noLines int, progressBar *pb.ProgressBar, logFields chan *types.Field) {
 	defer wg.Done()
 
 	nginxParser := gonx.NewParser(logFile.Format)
@@ -156,11 +156,11 @@ func processLog(wg *sync.WaitGroup, db *sql.DB, cfg *config.Config, logFile *typ
 	}
 }
 
-func startDigesterAbsorb(wg *sync.WaitGroup, digesters <-chan digester, progressBar *pb.ProgressBar) {
+func startDigesterAbsorb(wg *sync.WaitGroup, digesters <-chan digester, cfg *config.Config, progressBar *pb.ProgressBar) {
 	defer wg.Done()
 
 	for curDigester := range digesters {
-		digestErr := curDigester.Absorb()
+		digestErr := curDigester.Absorb(cfg)
 		if digestErr != nil {
 			fmt.Fprintln(os.Stderr, digestErr.Error())
 		}

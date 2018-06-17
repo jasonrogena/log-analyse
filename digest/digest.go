@@ -2,9 +2,11 @@ package digest
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/jasonrogena/log-analyse/config"
 	"github.com/jasonrogena/log-analyse/types"
 )
 
@@ -12,8 +14,17 @@ type UrlPathDigester struct {
 	tree *Tree
 }
 
-func (digester UrlPathDigester) Absorb() (err error) {
-	err = digester.tree.generalizeTree()
+type DigestPayload struct {
+	Field *types.Field
+	Cnf   *config.Config
+}
+
+func (digester UrlPathDigester) Absorb(someData interface{}) (err error) {
+	config, ok := someData.(*config.Config)
+	if ok {
+		fmt.Printf("Tree has the %d root nodes\n", len(digester.tree.rootNodes))
+		err = digester.tree.generalizeTree(config)
+	}
 	return
 }
 
@@ -27,24 +38,43 @@ func getField(someData interface{}) (*types.Field, bool) {
 	return field, ok
 }
 
+func getDigestPayload(someData interface{}) (DigestPayload, bool) {
+	payload, ok := someData.(DigestPayload)
+	if ok {
+		if payload.Field.FieldType.Name != "request" {
+			ok = false
+		}
+	}
+	return payload, ok
+}
+
 func (digester UrlPathDigester) Digest(someData interface{}) error {
-	field, fieldOk := getField(someData)
-	if fieldOk && len(field.ValueString) > 0 {
+	payload, payloadOk := getDigestPayload(someData)
+	field := payload.Field
+	urlRegex, regexErr := regexp.Compile(payload.Cnf.Digest.UriRegex)
+	if payloadOk && regexErr == nil && len(field.ValueString) > 0 {
 		//GET /api/v1/forms/197928.json?a=dfds HTTP/1.1
 		reqPartsArr := strings.Split(field.ValueString, " ")
 		if len(reqPartsArr) == 3 {
-			reqPathWithArgs := reqPartsArr[2]
-			reqPathParts := strings.Split(reqPathWithArgs, "?")
-			cleanReqPath := reqPathParts[0]
-			cleanReqPathParts := strings.Split(cleanReqPath, "/")
-			addPathErr := digester.tree.addRequestPath(nil, digester.tree.rootNodes, cleanReqPathParts, -1, field)
-			if addPathErr != nil {
-				return addPathErr
+			reqPathWithArgs := cleanUri(reqPartsArr[1])
+			if urlRegex.MatchString(reqPathWithArgs) {
+				reqPathParts := strings.Split(reqPathWithArgs, "?")
+				cleanReqPath := reqPathParts[0]
+				cleanReqPathParts := strings.Split(cleanReqPath, "/")
+				addPathErr := digester.tree.addRequestPath(nil, digester.tree.rootNodes, cleanReqPathParts, -1, field)
+				if addPathErr != nil {
+					return addPathErr
+				}
 			}
 		}
 	}
 
 	return nil
+}
+
+func cleanUri(uri string) string {
+	uri = strings.Replace(uri, "//", "/", -1)
+	return uri
 }
 
 func (tree *Tree) addRequestPath(parentNode *TreeNode, nodes map[string]*TreeNode, requestPathParts []string, lastVisitedPathIndex int, field *types.Field) error {
@@ -114,7 +144,7 @@ func InitUrlPathDigester(rbfsLayerCap int) (digester UrlPathDigester) {
 	return
 }
 
-func (tree *Tree) generalizeTree() error {
+func (tree *Tree) generalizeTree(config *config.Config) error {
 	// Use reverse breadth first search to travers the tree, starting from it's leaf nodes
 	var treeLayers []int
 
@@ -122,6 +152,7 @@ func (tree *Tree) generalizeTree() error {
 		treeLayers = append(treeLayers, cl)
 	}
 	sort.Ints(treeLayers)
+	fmt.Printf("Going through %d tree layers\n", len(treeLayers))
 
 	// perform the traversal, starting from the bottom most (bottom most leafs) layer
 	for curIndex := len(treeLayers) - 1; curIndex >= 0; curIndex-- {
@@ -137,8 +168,10 @@ func (tree *Tree) generalizeTree() error {
 		for curUUID := range tree.inOrderNodeIndex[curLayer] {
 			if len(tree.inOrderNodeIndex[curLayer][curUUID].payload) > 0 {
 				curNode := tree.inOrderNodeIndex[curLayer][curUUID]
-				nodePath := curNode.reconstructPath("")
-				fmt.Printf("About to store %q as a generalized path\n", nodePath)
+				nodePath, noPermutations := curNode.reconstructPath("", 1)
+				if config.Digest.MinPathPermutations <= noPermutations {
+					fmt.Printf("About to store %q as a generalized path (%d permutations)\n", nodePath, noPermutations)
+				}
 			}
 		}
 	}
@@ -146,17 +179,39 @@ func (tree *Tree) generalizeTree() error {
 	return nil
 }
 
-func (node *TreeNode) reconstructPath(curPath string) string {
+func (tree *Tree) printOrderedIndexTree() {
+	var treeLayers []int
+
+	for cl := range tree.inOrderNodeIndex {
+		treeLayers = append(treeLayers, cl)
+	}
+	sort.Ints(treeLayers)
+
+	for curIndex := len(treeLayers) - 1; curIndex >= 0; curIndex-- {
+		curLayer := treeLayers[curIndex]
+		fmt.Printf("Layer %d has these many nodes %d \n", curLayer, len(tree.inOrderNodeIndex[curLayer]))
+		for curUUID := range tree.inOrderNodeIndex[curLayer] { //TODO: Does range work with growing map
+			fmt.Printf("%s (%v) ", tree.inOrderNodeIndex[curLayer][curUUID].value, tree.inOrderNodeIndex[curLayer][curUUID].combinedValues)
+			if curLayer == 4 {
+				fmt.Printf("_%s_ ", tree.inOrderNodeIndex[curLayer][curUUID].parent.value)
+			}
+		}
+		fmt.Printf("\n")
+	}
+}
+
+func (node *TreeNode) reconstructPath(curPath string, noPermutations int) (string, int) {
 	if len(curPath) > 0 {
 		curPath = "/" + curPath
 	}
 	curPath = node.value + curPath
+	noPermutations = noPermutations * node.getNoValuePermutations()
 
 	if node.parent != nil {
-		curPath = node.parent.reconstructPath(curPath)
+		curPath, noPermutations = node.parent.reconstructPath(curPath, noPermutations)
 	}
 
-	return curPath
+	return curPath, noPermutations
 }
 
 func (node *TreeNode) generalizeTreeNode(tree *Tree) error {

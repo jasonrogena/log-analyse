@@ -13,7 +13,7 @@ const Name = "ingest"
 const oneOff = "one-off"
 
 type digester interface {
-	Absorb() error
+	Absorb(someData interface{}) error
 	Digest(someData interface{}) error
 	IsDigestable(someData interface{}) bool
 }
