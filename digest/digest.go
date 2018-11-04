@@ -56,7 +56,7 @@ func (digester UrlPathDigester) Digest(someData interface{}) error {
 		//GET /api/v1/forms/197928.json?a=dfds HTTP/1.1
 		reqPartsArr := strings.Split(field.ValueString, " ")
 		if len(reqPartsArr) == 3 {
-			reqPathWithArgs := cleanUri(reqPartsArr[1])
+			reqPathWithArgs := CleanUri(reqPartsArr[1])
 			if urlRegex.MatchString(reqPathWithArgs) {
 				reqPathParts := strings.Split(reqPathWithArgs, "?")
 				cleanReqPath := reqPathParts[0]
@@ -72,8 +72,9 @@ func (digester UrlPathDigester) Digest(someData interface{}) error {
 	return nil
 }
 
-func cleanUri(uri string) string {
-	uri = strings.Replace(uri, "//", "/", -1)
+func CleanUri(uri string) string {
+	re := regexp.MustCompile(`//+`)
+	uri = re.ReplaceAllString(uri, "/")
 	return uri
 }
 
