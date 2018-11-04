@@ -1,14 +1,10 @@
 ## Log Analyse
 
-Fast standalone tool to help you make sense of your NGINX access logs. Still work in progress. You need make (build-essential) and go (version 1.7 and over) installed on your computer to build this project. Build by:
+Fast standalone tool to help you make sense of your NGINX access logs. Still work in progress. You need make (build-essential) and go (version 1.11 and over) installed on your computer to build this project. Build by:
 
 ```sh
-cd $GOPATH/src
-mkdir -p github.com/jasonrogena
-cd github.com/jasonrogena
 git clone git@github.com:jasonrogena/log-analyse.git
 cd log-analyse
-make deps
 go build
 ```
 
