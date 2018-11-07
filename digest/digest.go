@@ -1,6 +1,7 @@
 package digest
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -38,34 +39,53 @@ func getField(someData interface{}) (*types.Field, bool) {
 	return field, ok
 }
 
-func getDigestPayload(someData interface{}) (DigestPayload, bool) {
+func GetDigestPayload(someData interface{}) (DigestPayload, bool) {
 	payload, ok := someData.(DigestPayload)
 	if ok {
-		if payload.Field.FieldType.Name != "request" {
+		if payload.Field == nil || payload.Field.FieldType.Name != "request" {
 			ok = false
 		}
 	}
 	return payload, ok
 }
 
-func (digester UrlPathDigester) Digest(someData interface{}) error {
-	payload, payloadOk := getDigestPayload(someData)
-	field := payload.Field
-	urlRegex, regexErr := regexp.Compile(payload.Cnf.Digest.UriRegex)
-	if payloadOk && regexErr == nil && len(field.ValueString) > 0 {
+func GetUriParts(request string, uriRegex string) ([]string, error) {
+	urlRegex, regexErr := regexp.Compile(uriRegex)
+	if regexErr == nil && len(request) > 0 {
 		//GET /api/v1/forms/197928.json?a=dfds HTTP/1.1
-		reqPartsArr := strings.Split(field.ValueString, " ")
+		reqPartsArr := strings.Split(request, " ")
 		if len(reqPartsArr) == 3 {
 			reqPathWithArgs := CleanUri(reqPartsArr[1])
 			if urlRegex.MatchString(reqPathWithArgs) {
 				reqPathParts := strings.Split(reqPathWithArgs, "?")
 				cleanReqPath := reqPathParts[0]
 				cleanReqPathParts := strings.Split(cleanReqPath, "/")
-				addPathErr := digester.tree.addRequestPath(nil, digester.tree.rootNodes, cleanReqPathParts, -1, field)
-				if addPathErr != nil {
-					return addPathErr
-				}
+				return cleanReqPathParts, nil
+			} else {
+				return nil, errors.New("Request uri did not match regex '" + uriRegex + "'")
 			}
+		} else {
+			return nil, errors.New("Request string doesn't have three parts")
+		}
+	} else if regexErr != nil {
+		return nil, regexErr
+	} else {
+		return nil, errors.New("Request is an empty string")
+	}
+}
+
+func (digester UrlPathDigester) Digest(someData interface{}) error {
+	payload, payloadOk := GetDigestPayload(someData)
+	if payloadOk {
+		field := payload.Field
+		uriParts, uriErr := GetUriParts(field.ValueString, payload.Cnf.Digest.UriRegex)
+		if uriErr == nil {
+			addPathErr := digester.tree.addRequestPath(nil, digester.tree.rootNodes, uriParts, -1, field)
+			if addPathErr != nil {
+				return addPathErr
+			}
+		} else {
+			return uriErr
 		}
 	}
 
