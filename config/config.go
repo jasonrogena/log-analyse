@@ -24,9 +24,10 @@ type Ingest struct {
 }
 
 type Digest struct {
-	RbfsLayerCap        int
-	MinPathPermutations int
-	UriRegex            string
+	RbfsLayerCap            int
+	MinPathPermutations     int
+	GeneralizeMinChildNodes int
+	UriRegex                string
 }
 
 const configPath string = "./log-analyse.toml"

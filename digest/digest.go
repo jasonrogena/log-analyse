@@ -62,7 +62,7 @@ func GetUriParts(request string, uriRegex string) ([]string, error) {
 				cleanReqPathParts := strings.Split(cleanReqPath, "/")
 				return cleanReqPathParts, nil
 			} else {
-				return nil, errors.New("Request uri did not match regex '" + uriRegex + "'")
+				return nil, errors.New("Request uri '" + reqPathWithArgs + "' did not match regex '" + uriRegex + "'")
 			}
 		} else {
 			return nil, errors.New("Request string doesn't have three parts")
@@ -179,7 +179,7 @@ func (tree *Tree) generalizeTree(config *config.Config) error {
 	for curIndex := len(treeLayers) - 1; curIndex >= 0; curIndex-- {
 		curLayer := treeLayers[curIndex]
 		for curUUID := range tree.inOrderNodeIndex[curLayer] { //TODO: Does range work with growing map
-			tree.inOrderNodeIndex[curLayer][curUUID].generalizeTreeNode(tree)
+			tree.inOrderNodeIndex[curLayer][curUUID].generalizeTreeNode(tree, config)
 		}
 	}
 
@@ -235,9 +235,9 @@ func (node *TreeNode) reconstructPath(curPath string, noPermutations int) (strin
 	return curPath, noPermutations
 }
 
-func (node *TreeNode) generalizeTreeNode(tree *Tree) error {
+func (node *TreeNode) generalizeTreeNode(tree *Tree, config *config.Config) error {
 	// Check each of it's children, combine those that have equivalent child trees
-	if node.children != nil {
+	if node.children != nil && len(node.children) >= config.Digest.GeneralizeMinChildNodes {
 		var childUUIDS []string
 		for curUUID := range node.children {
 			childUUIDS = append(childUUIDS, curUUID)

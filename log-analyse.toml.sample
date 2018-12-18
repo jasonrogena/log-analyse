@@ -10,4 +10,5 @@ piggyBackDigest = true
 [digest]
 rbfsLayerCap = 1
 minPathPermutations = 1
+GeneralizeMinChildNodes = 5
 uriRegex = "*"
