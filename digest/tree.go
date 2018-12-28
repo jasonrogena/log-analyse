@@ -85,7 +85,9 @@ func (node *TreeNode) addChild(tree *Tree, newChild *TreeNode) error {
 	newChild.parent = node
 	newChild.level = node.level + 1
 
-	tree.addNodeToIndex(newChild)
+	if tree != nil {
+		tree.addNodeToIndex(newChild)
+	}
 
 	return nil
 }
@@ -114,6 +116,10 @@ func (node *TreeNode) getNoValuePermutations() int {
 }
 
 func (node *TreeNode) addCombinedValue(value string) {
+	if value == GENERIC_VALUE {
+		return
+	}
+
 	found := false
 	for _, curValue := range node.combinedValues {
 		if curValue == value {

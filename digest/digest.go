@@ -80,7 +80,7 @@ func (digester UrlPathDigester) Digest(someData interface{}) error {
 		field := payload.Field
 		uriParts, uriErr := GetUriParts(field.ValueString, payload.Cnf.Digest.UriRegex)
 		if uriErr == nil {
-			addPathErr := digester.tree.addRequestPath(nil, digester.tree.rootNodes, uriParts, -1, field)
+			addPathErr := digester.tree.mergeRequestPathIntoTree(nil, digester.tree.rootNodes, uriParts, -1, field, payload.Cnf)
 			if addPathErr != nil {
 				return addPathErr
 			}
@@ -98,7 +98,115 @@ func CleanUri(uri string) string {
 	return uri
 }
 
-func (tree *Tree) addRequestPath(parentNode *TreeNode, nodes map[string]*TreeNode, requestPathParts []string, lastVisitedPathIndex int, field *types.Field) error {
+func (tree *Tree) mergeRequestPathIntoTree(parentNode *TreeNode, nodes map[string]*TreeNode, requestPathParts []string, lastVisitedPathIndex int, field *types.Field, config *config.Config) error {
+	newNode, newNodeErr := constructTreeNode(requestPathParts, 0)
+	if newNodeErr != nil {
+		return newNodeErr
+	}
+
+	// Search through the tree for where to place the constructed treenode
+	for _, curRootNode := range tree.rootNodes {
+		if newNode.checkAndMergeInto(curRootNode) != nil {
+			// newNode merged into the current root node
+			return nil
+		}
+	}
+
+	// We weren't able to merge the newNode into any of the root nodes
+	// Add it to the tree
+	//
+	// TODO: Is there a way we could do whatever addRequestPath does in
+	//       checkAndMergeInto?
+	return tree.addRequestPath(nil, tree.rootNodes, requestPathParts, -1, field, config)
+}
+
+// Constructs a treenode using the the requestPathParts. The treeNode is added to the
+//  tree's index but not associated to existing nodes in the tree
+func constructTreeNode(requestPathParts []string, nodePathIndex int) (*TreeNode, error) {
+	newNodeUUID, uuidErr := genUUID()
+	if uuidErr != nil {
+		return nil, uuidErr
+	}
+	treeNode := TreeNode{level: nodePathIndex, uuid: newNodeUUID, value: requestPathParts[nodePathIndex], parent: nil}
+
+	if len(requestPathParts) > nodePathIndex+1 {
+		childNode, childErr := constructTreeNode(requestPathParts, nodePathIndex+1)
+		if childErr != nil {
+			return nil, childErr
+		}
+
+		treeNode.addChild(nil, childNode)
+	}
+
+	return &treeNode, nil
+}
+
+// Criteria for nodeInTree to be considered
+//    - If it is on the same level as treeNode
+//  AND
+//  ( - If it is equal to the value of treeNode
+//  OR
+//   - If it is equal to GENERIC_VALUE )
+//  AND
+//   - It has a sub-tree that has the same number of levels as treeNode. Since
+//     calculation is expensive, make it the inner most condition
+func (treeNode *TreeNode) checkAndMergeInto(nodeInTree *TreeNode) *TreeNode {
+	if treeNode.level == nodeInTree.level && (treeNode.value == nodeInTree.value || nodeInTree.value == GENERIC_VALUE) {
+		treeNodeLevels := treeNode.getNumberOfLevels(0)
+		if nodeInTree.hasSubTreeWithLevels(treeNodeLevels) {
+			if treeNode.children != nil && len(treeNode.children) > 0 {
+				for _, curTreeNodeChild := range treeNode.children {
+					for _, curNodeInTreeChild := range nodeInTree.children {
+						mergedChild := curTreeNodeChild.checkAndMergeInto(curNodeInTreeChild)
+						if mergedChild != nil {
+							// no need to make mergedChild a child of nodeInTree. It already is
+							treeNode.mergeInto(nodeInTree)
+							return nodeInTree
+						}
+					}
+				}
+			} else {
+				treeNode.mergeInto(nodeInTree)
+				return nodeInTree
+			}
+		}
+	}
+
+	return nil
+}
+
+func (treeNode *TreeNode) mergeInto(nodeInTree *TreeNode) {
+	if nodeInTree.value == GENERIC_VALUE {
+		nodeInTree.addCombinedValue(treeNode.value)
+	}
+}
+
+// Assumes the treeNode has zero or one child
+func (treeNode *TreeNode) getNumberOfLevels(noParents int) int {
+	if treeNode.children != nil && len(treeNode.children) == 1 {
+		for _, curChild := range treeNode.children {
+			noParents = curChild.getNumberOfLevels(noParents)
+		}
+	}
+
+	return noParents + 1
+}
+
+func (treeNode *TreeNode) hasSubTreeWithLevels(levels int) bool {
+	if treeNode.children != nil && len(treeNode.children) > 0 {
+		for _, curChild := range treeNode.children {
+			if curChild.hasSubTreeWithLevels(levels - 1) {
+				return true
+			}
+		}
+	} else if levels == 0 {
+		return true
+	}
+
+	return false
+}
+
+func (tree *Tree) addRequestPath(parentNode *TreeNode, nodes map[string]*TreeNode, requestPathParts []string, lastVisitedPathIndex int, field *types.Field, config *config.Config) error {
 	if lastVisitedPathIndex < len(requestPathParts) {
 		nodeFound := false
 		var foundNode *TreeNode
@@ -140,8 +248,11 @@ func (tree *Tree) addRequestPath(parentNode *TreeNode, nodes map[string]*TreeNod
 		if foundNode != nil {
 			if pathIndex == len(requestPathParts)-1 { // leaf node for this request path
 				foundNode.payload = append(foundNode.payload, field)
+
+				// Generalize
+				foundNode.generalizeTreeNodeAndParents(tree, config)
 			} else {
-				addReqErr := tree.addRequestPath(foundNode, foundNode.children, requestPathParts, pathIndex, field)
+				addReqErr := tree.addRequestPath(foundNode, foundNode.children, requestPathParts, pathIndex, field, config)
 				if addReqErr != nil {
 					return addReqErr
 				}
@@ -166,7 +277,7 @@ func InitUrlPathDigester(rbfsLayerCap int) (digester UrlPathDigester) {
 }
 
 func (tree *Tree) generalizeTree(config *config.Config) error {
-	// Use reverse breadth first search to travers the tree, starting from it's leaf nodes
+	// Use reverse breadth first search to traverse the tree, starting from it's leaf nodes
 	var treeLayers []int
 
 	for cl := range tree.inOrderNodeIndex {
@@ -174,14 +285,6 @@ func (tree *Tree) generalizeTree(config *config.Config) error {
 	}
 	sort.Ints(treeLayers)
 	fmt.Printf("Going through %d tree layers\n", len(treeLayers))
-
-	// perform the traversal, starting from the bottom most (bottom most leafs) layer
-	for curIndex := len(treeLayers) - 1; curIndex >= 0; curIndex-- {
-		curLayer := treeLayers[curIndex]
-		for curUUID := range tree.inOrderNodeIndex[curLayer] { //TODO: Does range work with growing map
-			tree.inOrderNodeIndex[curLayer][curUUID].generalizeTreeNode(tree, config)
-		}
-	}
 
 	// write to the database
 	for curIndex := len(treeLayers) - 1; curIndex >= 0; curIndex-- {
@@ -233,6 +336,15 @@ func (node *TreeNode) reconstructPath(curPath string, noPermutations int) (strin
 	}
 
 	return curPath, noPermutations
+}
+
+func (node *TreeNode) generalizeTreeNodeAndParents(tree *Tree, config *config.Config) error {
+	genErr := node.generalizeTreeNode(tree, config)
+	if genErr == nil && node.parent != nil {
+		return node.parent.generalizeTreeNodeAndParents(tree, config)
+	}
+
+	return genErr
 }
 
 func (node *TreeNode) generalizeTreeNode(tree *Tree, config *config.Config) error {
